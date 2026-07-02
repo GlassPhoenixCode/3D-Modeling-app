@@ -18,6 +18,11 @@
     --safe-l: env(safe-area-inset-left, 0px);
     --safe-r: env(safe-area-inset-right, 0px);
   }
+  :root[data-theme="light"]{
+    --bg:#eef0f3; --panel:#ffffff; --panel2:#f2f4f7; --line:#dde1e7;
+    --ink:#1a1d23; --ink-dim:#6b7280; --accent:#e2611f; --accent-dim:#ffe1c9;
+    --good:#1f9d5c; --bad:#e0334f;
+  }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
   html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:var(--bg);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);}
@@ -141,6 +146,7 @@
     background:var(--accent);margin-top:-7px;}
 
   /* Landscape layout */
+  #moreExpanded{display:none;}
   @media (orientation:landscape){
     #sidebar-l,#sidebar-r{display:flex;}
     #bottombar{display:none;}
@@ -156,6 +162,11 @@
     .panel.fromLeft,.panel.fromRight{left:8px;right:8px;bottom:calc(78px + var(--safe-b));width:auto;margin:0 auto;max-width:480px;}
     #viewCubeWrap{right:calc(10px + var(--safe-r));}
     #nudgePad{left:calc(8px + var(--safe-l));bottom:calc(86px + var(--safe-b));}
+  }
+  /* Large screens: enough vertical room to show every tool in the sidebar, no More tap needed */
+  @media (orientation:landscape) and (min-width:900px) and (min-height:760px){
+    #moreToggleBtn{display:none;}
+    #moreExpanded{display:flex; flex-direction:column;}
   }
 </style>
 </head>
@@ -182,7 +193,19 @@
         <button class="tool" data-panel="panelAdd"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add</button>
         <button class="tool" data-panel="panelTransform"><svg viewBox="0 0 24 24"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>Move</button>
         <button class="tool" data-panel="panelBool"><svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg>Bool</button>
-        <button class="tool" data-panel="panelMore"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>
+        <button class="tool" id="moreToggleBtn" data-panel="panelMore"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>
+        <div id="moreExpanded">
+          <button class="tool" id="snapToolBtn"><svg viewBox="0 0 24 24"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg><span id="snapLabel2">Snap</span></button>
+          <button class="tool" id="themeToolBtn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span id="themeLabel2">Theme</span></button>
+          <button class="tool" data-panel2="panelMeasure"><svg viewBox="0 0 24 24"><path d="M3 12h18"/><path d="M6 9v6M12 9v6M18 9v6"/></svg>Measure</button>
+          <button class="tool" data-panel2="panelArray"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="6" height="6"/><rect x="15" y="3" width="6" height="6"/><rect x="9" y="15" width="6" height="6"/></svg>Array</button>
+          <button class="tool" data-panel2="panelGroup"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="16" height="7" rx="1"/></svg>Group</button>
+          <button class="tool" data-panel2="panelAlign"><svg viewBox="0 0 24 24"><path d="M4 4v16M4 8h10M4 16h14"/></svg>Align</button>
+          <button class="tool" data-panel2="panelHistory"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>History</button>
+          <button class="tool" data-panel2="panelAnalyze"><svg viewBox="0 0 24 24"><path d="M12 2 2 22h20z"/><path d="M12 10v6"/></svg>Thick</button>
+          <button class="tool" data-panel2="panelSection"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/></svg>Section</button>
+          <button class="tool" data-panel2="panelCloud"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-1-7.9A5 5 0 0 1 16 8a4 4 0 0 1 1 10H7z"/></svg>Cloud</button>
+        </div>
         <div class="divider"></div>
         <button class="tool" data-panel="panelLayers"><svg viewBox="0 0 24 24"><path d="M12 2 2 8l10 6 10-6z"/><path d="M2 16l10 6 10-6"/><path d="M2 12l10 6 10-6"/></svg>Layers</button>
       </div>
@@ -275,6 +298,7 @@
     <div class="body">
       <div class="grid4">
         <button class="pbtn" id="moreSnap"><svg viewBox="0 0 24 24"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg><span id="snapLabel">Snap</span></button>
+        <button class="pbtn" id="moreTheme"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span id="themeLabel">Theme: Dark</span></button>
         <button class="pbtn" data-panel2="panelMeasure"><svg viewBox="0 0 24 24"><path d="M3 12h18"/><path d="M6 9v6M12 9v6M18 9v6"/></svg>Measure</button>
         <button class="pbtn" data-panel2="panelArray"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="6" height="6"/><rect x="15" y="3" width="6" height="6"/><rect x="9" y="15" width="6" height="6"/></svg>Array</button>
         <button class="pbtn" data-panel2="panelGroup"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="16" height="7" rx="1"/></svg>Group</button>
@@ -487,7 +511,7 @@ const hemi=new THREE.HemisphereLight(0xbfd4ff, 0x1a1512, 0.9); hemi.position.set
 const key=new THREE.DirectionalLight(0xffffff,0.9); key.position.set(6,6,10); scene.add(key);
 const fill=new THREE.DirectionalLight(0x88aaff,0.35); fill.position.set(-6,-6,4); scene.add(fill);
 
-const grid=new THREE.GridHelper(120,24,0x3a4150,0x232833); grid.rotation.x=Math.PI/2; scene.add(grid);
+let grid=new THREE.GridHelper(120,24,0x3a4150,0x232833); grid.rotation.x=Math.PI/2; scene.add(grid);
 const axes=new THREE.AxesHelper(3); axes.material.transparent=true; axes.material.opacity=0.5; scene.add(axes);
 
 const objectsGroup=new THREE.Group(); scene.add(objectsGroup);
@@ -596,27 +620,76 @@ function endTouch(e){
 renderer.domElement.addEventListener('touchend',endTouch);
 renderer.domElement.addEventListener('touchcancel',endTouch);
 
-// mouse fallback for desktop testing
-let mouseDown=false, mouseMode=null;
+// mouse / trackpad support for desktop
+let mouseDown=false, mouseMode=null, mouseDragObj=null;
+const mouseDragPlane=new THREE.Plane(), mouseDragOffset=new THREE.Vector3();
 renderer.domElement.addEventListener('mousedown',(e)=>{
-  mouseDown=true; mouseMode = e.button===2?'pan':'rotate';
+  mouseDown=true;
   ndc.x=(e.clientX/window.innerWidth)*2-1; ndc.y=-(e.clientY/window.innerHeight)*2+1;
   raycaster.setFromCamera(ndc,camera);
   const hits=raycaster.intersectObjects(objectsGroup.children,true);
-  if(hits.length) selectObject(topLevelOf(hits[0].object));
+  if(measureMode){
+    if(hits.length) captureMeasurePoint(hits[0].point);
+    mouseMode=null;
+    return;
+  }
+  const topHit = hits.length ? topLevelOf(hits[0].object) : null;
+  if(e.button===2){
+    mouseMode='pan';
+    return;
+  }
+  if(hits.length && topHit===selected && xformActive){
+    mouseMode='move'; mouseDragObj=topHit;
+    const n=camera.getWorldDirection(new THREE.Vector3()).negate();
+    mouseDragPlane.setFromNormalAndCoplanarPoint(n, mouseDragObj.position);
+    const ip=new THREE.Vector3(); raycaster.ray.intersectPlane(mouseDragPlane,ip);
+    mouseDragOffset.copy(mouseDragObj.position).sub(ip);
+  } else {
+    if(hits.length) selectObject(topHit);
+    mouseMode='rotate';
+  }
 });
-window.addEventListener('mouseup',()=>mouseDown=false);
+window.addEventListener('mouseup',()=>{ mouseDown=false; mouseMode=null; mouseDragObj=null; });
 window.addEventListener('mousemove',(e)=>{
   if(!mouseDown) return;
   if(mouseMode==='rotate'){
     cam.theta -= e.movementX*0.006; cam.phi -= e.movementY*0.006;
     cam.phi=Math.max(0.15,Math.min(Math.PI-0.15,cam.phi)); updateCamera();
+  } else if(mouseMode==='move' && mouseDragObj){
+    ndc.x=(e.clientX/window.innerWidth)*2-1; ndc.y=-(e.clientY/window.innerHeight)*2+1;
+    raycaster.setFromCamera(ndc,camera);
+    const ip=new THREE.Vector3();
+    if(raycaster.ray.intersectPlane(mouseDragPlane,ip)){
+      const np=ip.add(mouseDragOffset);
+      mouseDragObj.position.set(snapVal(np.x), snapVal(np.y), snapVal(np.z));
+      refreshTransformPanel();
+    }
+  } else if(mouseMode==='pan'){
+    const right=new THREE.Vector3(); camera.getWorldDirection(right); right.cross(camera.up).normalize();
+    cam.target.addScaledVector(right, -e.movementX*0.04*cam.dist/70);
+    cam.target.addScaledVector(camera.up, e.movementY*0.04*cam.dist/70);
+    updateCamera();
   }
 });
 renderer.domElement.addEventListener('wheel',(e)=>{
   cam.dist=Math.max(8,Math.min(600,cam.dist+e.deltaY*0.08)); updateCamera();
 },{passive:true});
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
+
+/* ---------- keyboard: arrow keys nudge the selected object on the XY plane ---------- */
+window.addEventListener('keydown',(e)=>{
+  const tag=(document.activeElement && document.activeElement.tagName || '').toLowerCase();
+  if(tag==='input' || tag==='textarea') return;
+  if(!selected) return;
+  let axis=null, dir=0;
+  if(e.key==='ArrowUp'){ axis='y'; dir=1; }
+  else if(e.key==='ArrowDown'){ axis='y'; dir=-1; }
+  else if(e.key==='ArrowLeft'){ axis='x'; dir=-1; }
+  else if(e.key==='ArrowRight'){ axis='x'; dir=1; }
+  else return;
+  e.preventDefault();
+  nudge(axis,dir);
+});
 
 window.addEventListener('resize',()=>{
   camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
@@ -1611,13 +1684,46 @@ function refreshHistoryList(){
 // baseline checkpoint so the very first change has something to undo to
 pushHistory('start');
 
-/* ---------- snap toggle (More tray) ---------- */
-document.getElementById('moreSnap').addEventListener('click',()=>{
+/* ---------- snap toggle (More tray + expanded sidebar) ---------- */
+function toggleSnap(){
   snapEnabled=!snapEnabled;
-  document.getElementById('snapLabel').textContent = snapEnabled?'Snap: ON':'Snap';
+  const txt = snapEnabled?'Snap: ON':'Snap';
+  document.getElementById('snapLabel').textContent = txt;
+  document.getElementById('snapLabel2').textContent = txt;
   document.getElementById('moreSnap').classList.toggle('active', snapEnabled);
+  document.getElementById('snapToolBtn').classList.toggle('active', snapEnabled);
   toast(snapEnabled ? 'Snap to grid ON (uses current step size)' : 'Snap to grid OFF');
-});
+}
+document.getElementById('moreSnap').addEventListener('click',toggleSnap);
+document.getElementById('snapToolBtn').addEventListener('click',toggleSnap);
+
+/* ---------- light / dark theme ---------- */
+const THEME_COLORS={
+  dark:{bg:0x14171c, major:0x3a4150, minor:0x232833},
+  light:{bg:0xeef0f3, major:0xb9bfc9, minor:0xd7dbe1}
+};
+let currentTheme='dark';
+function applyTheme(mode){
+  currentTheme=mode;
+  document.documentElement.setAttribute('data-theme', mode==='light'?'light':'dark');
+  const c=THEME_COLORS[mode];
+  scene.background=new THREE.Color(c.bg);
+  scene.fog=new THREE.Fog(c.bg,40,140);
+  scene.remove(grid);
+  grid=new THREE.GridHelper(120,24,c.major,c.minor);
+  grid.rotation.x=Math.PI/2;
+  scene.add(grid);
+  const txt = mode==='light' ? 'Theme: Light' : 'Theme: Dark';
+  document.getElementById('themeLabel').textContent = txt;
+  document.getElementById('themeLabel2').textContent = txt;
+  document.getElementById('moreTheme').classList.toggle('active', mode==='light');
+  document.getElementById('themeToolBtn').classList.toggle('active', mode==='light');
+  localStorage.setItem('forge3d-theme', mode);
+}
+function toggleTheme(){ applyTheme(currentTheme==='dark' ? 'light' : 'dark'); }
+document.getElementById('moreTheme').addEventListener('click',toggleTheme);
+document.getElementById('themeToolBtn').addEventListener('click',toggleTheme);
+applyTheme(localStorage.getItem('forge3d-theme')==='light' ? 'light' : 'dark');
 
 /* ---------- measure tool ---------- */
 let measureMode=false;

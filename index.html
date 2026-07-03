@@ -779,7 +779,19 @@ cubeCanvas.addEventListener('touchstart',(e)=>{ e.preventDefault(); const t=e.ch
 cubeCanvas.addEventListener('click',(e)=>{ handleCubeTap(e.clientX,e.clientY); });
 setTimeout(sizeCubeCanvas,0);
 
-(function animate(){ requestAnimationFrame(animate); stepCamAnim(); renderer.render(scene,camera); renderCube(); })();
+let lastMeshCountForClip=-1;
+let clipEnabled=false, clipAxis='z', clipFlip=false;
+const clipPlane=new THREE.Plane(new THREE.Vector3(0,0,1),0);
+(function animate(){
+  requestAnimationFrame(animate);
+  stepCamAnim();
+  if(clipEnabled){
+    const mc=allMeshes().length;
+    if(mc!==lastMeshCountForClip){ applyClipToMaterials(); lastMeshCountForClip=mc; }
+  }
+  renderer.render(scene,camera);
+  renderCube();
+})();
 
 /* ---------- object model ---------- */
 let idCounter=1;
@@ -812,7 +824,25 @@ function snapVal(v){ return snapEnabled ? Math.round(v/xformStep)*xformStep : v;
 
 // All dimensions in millimeters. Each entry also carries restLift: the z-offset
 // that sits the shape's base flush on the grid (z=0) instead of centered through it.
-const PRIM_LIFT={box:10, sphere:13, cylinder:12, cone:12, torus:4, capsule:8};
+const PRIM_LIFT={box:10, sphere:13, cylinder:12, cone:12, torus:4, capsule:12};
+
+// r128 (the three.js version this app loads) has no native CapsuleGeometry — that
+// was added in r142+. Build one by revolving a rounded profile (pole -> hemisphere
+// arc -> straight wall -> hemisphere arc -> pole) around the Y axis with LatheGeometry.
+function makeCapsuleGeometry(radius, totalHeight, radialSegments){
+  const straightHalf=Math.max(0.0001, totalHeight/2 - radius);
+  const arcSegs=8;
+  const pts=[];
+  for(let i=0;i<=arcSegs;i++){
+    const phi=(i/arcSegs)*(Math.PI/2); // 0 = pole, PI/2 = equator
+    pts.push(new THREE.Vector2(radius*Math.sin(phi), -straightHalf - radius*Math.cos(phi)));
+  }
+  for(let i=0;i<=arcSegs;i++){
+    const phi=Math.PI/2 - (i/arcSegs)*(Math.PI/2); // equator back down to pole
+    pts.push(new THREE.Vector2(radius*Math.sin(phi), straightHalf + radius*Math.cos(phi)));
+  }
+  return new THREE.LatheGeometry(pts, radialSegments);
+}
 
 function makeGeometry(prim){
   let g;
@@ -822,7 +852,7 @@ function makeGeometry(prim){
     case 'cylinder': g=new THREE.CylinderGeometry(10,10,24,28); g.rotateX(Math.PI/2); break;
     case 'cone': g=new THREE.ConeGeometry(13,24,28); g.rotateX(Math.PI/2); break;
     case 'torus': g=new THREE.TorusGeometry(11,4,16,32); break;
-    case 'capsule': g=new THREE.CylinderGeometry(8,8,16,20,1); g.rotateX(Math.PI/2); break;
+    case 'capsule': g=makeCapsuleGeometry(8,24,20); g.rotateX(Math.PI/2); break;
   }
   return g;
 }
@@ -883,7 +913,7 @@ function selectObject(obj){
   refreshTransformPanel();
   refreshLayers();
   refreshBoolList();
-  document.getElementById('nudgePad').classList.toggle('show', !!obj);
+  updateNudgePad();
 }
 
 function deleteSelected(){
@@ -891,7 +921,7 @@ function deleteSelected(){
   objectsGroup.remove(selected);
   selected=null; xformActive=false;
   refreshTransformPanel(); refreshLayers();
-  document.getElementById('nudgePad').classList.remove('show');
+  updateNudgePad();
   pushHistory('delete');
   toast('Deleted');
 }
@@ -911,8 +941,13 @@ function duplicateSelected(){
 
 /* ---------- panels open/close (non-blocking: canvas stays tappable underneath) ---------- */
 const backdrop=document.getElementById('backdrop');
+function updateNudgePad(){
+  const anyPanelOpen = !!document.querySelector('.panel.open');
+  document.getElementById('nudgePad').classList.toggle('show', !!selected && !anyPanelOpen);
+}
 function closeAllPanels(){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('open'));
+  updateNudgePad();
 }
 document.querySelectorAll('[data-panel]').forEach(btn=>{
   btn.addEventListener('click',()=>{
@@ -924,6 +959,7 @@ document.querySelectorAll('[data-panel]').forEach(btn=>{
     if(id==='panelTransform') refreshTransformPanel();
     if(id==='panelLayers') refreshLayers();
     if(id==='panelBool'){ refreshBoolList(); if(!wasOpen && !boolPrimary) armBoolPick('primary'); }
+    updateNudgePad();
   });
 });
 document.querySelectorAll('[data-close]').forEach(x=>x.addEventListener('click',closeAllPanels));
@@ -934,6 +970,7 @@ document.querySelectorAll('[data-panel2]').forEach(btn=>{
     document.getElementById(id).classList.add('open');
     if(id==='panelGroup') refreshGroupList();
     if(id==='panelHistory') refreshHistoryList();
+    updateNudgePad();
   });
 });
 
@@ -1077,6 +1114,7 @@ function refreshLayers(){
 /* ---------- boolean ops: sequential pick, canvas stays live, plus inline list ---------- */
 let boolPicking=null; // 'primary' | 'secondary' | null
 function armBoolPick(slot){
+  if(previewMesh){ clearBoolPreview(); toast('Previous preview discarded'); }
   boolPicking=slot;
   document.getElementById('pickPrimary').classList.toggle('active', slot==='primary');
   document.getElementById('pickSecondary').classList.toggle('active', slot==='secondary');
@@ -1404,6 +1442,7 @@ function importSTLBuffer(buf){
   mesh.userData.id='obj_'+Date.now();
   objectsGroup.add(mesh);
   selectObject(mesh); refreshLayers();
+  pushHistory('import stl');
   toast('STL imported');
 }
 function looksBinary(buf){
@@ -1463,7 +1502,7 @@ function importTHREEMFBuffer(buf){
     JSZip.loadAsync(buf).then(zip=>{
       const modelFile=zip.file('3D/3dmodel.model') || zip.file(/3dmodel\.model$/i)[0];
       if(!modelFile){toast('Invalid 3MF file');return;}
-      modelFile.async('text').then(text=>{
+      return modelFile.async('text').then(text=>{
         const xml=new DOMParser().parseFromString(text,'application/xml');
         const objects=xml.getElementsByTagName('object');
         let added=0;
@@ -1478,6 +1517,7 @@ function importTHREEMFBuffer(buf){
           for(const t of triEls){
             const i1=parseInt(t.getAttribute('v1')), i2=parseInt(t.getAttribute('v2')), i3=parseInt(t.getAttribute('v3'));
             const a=verts[i1], b=verts[i2], c=verts[i3];
+            if(!a||!b||!c) continue; // skip triangles referencing out-of-range vertex indices instead of crashing
             const n=new THREE.Vector3().subVectors(b,a).cross(new THREE.Vector3().subVectors(c,a)).normalize();
             [a,b,c].forEach(p=>{positions.push(p.x,p.y,p.z); normals.push(n.x,n.y,n.z);});
           }
@@ -1493,10 +1533,10 @@ function importTHREEMFBuffer(buf){
           objectsGroup.add(mesh);
           added++;
         }
-        if(added){ refreshLayers(); toast(added+' object(s) imported'); }
+        if(added){ pushHistory('import 3mf'); refreshLayers(); toast(added+' object(s) imported'); }
         else toast('No meshes found in 3MF');
       });
-    }).catch(err=>{console.error(err); toast('Could not read 3MF file');});
+    }).catch(err=>{console.error(err); toast('Could not read 3MF file — it may be corrupted or in an unsupported format');});
   });
 }
 
@@ -1511,6 +1551,7 @@ function downloadBlob(blob, filename){
 document.getElementById('btnFile').addEventListener('click',()=>{
   closeAllPanels();
   document.getElementById('panelFile').classList.add('open');
+  updateNudgePad();
 });
 document.getElementById('fExportSTL').addEventListener('click',exportSTL);
 document.getElementById('fExportTHREEMF').addEventListener('click',exportTHREEMF);
@@ -1522,10 +1563,16 @@ fileInput.addEventListener('change',(e)=>{
   const f=e.target.files[0]; if(!f) return;
   const reader=new FileReader();
   reader.onload=()=>{
-    if(pendingImportType==='stl') importSTLBuffer(reader.result);
-    else importTHREEMFBuffer(reader.result);
+    try{
+      if(pendingImportType==='stl') importSTLBuffer(reader.result);
+      else importTHREEMFBuffer(reader.result);
+    }catch(err){
+      console.error(err);
+      toast('Import failed — file looks corrupted or truncated');
+    }
     closeAllPanels();
   };
+  reader.onerror=()=>toast('Could not read that file');
   reader.readAsArrayBuffer(f);
   fileInput.value='';
 });
@@ -1543,45 +1590,71 @@ function openDB(){
 }
 async function getDB(){ if(!db) db=await openDB(); return db; }
 
-function serializeScene(){
-  return allMeshes().map(m=>{
-    m.updateMatrixWorld(true);
-    const pos=new THREE.Vector3(), quat=new THREE.Quaternion(), scl=new THREE.Vector3();
-    m.matrixWorld.decompose(pos,quat,scl);
-    const eul=new THREE.Euler().setFromQuaternion(quat);
+function serializeNode(obj){
+  if(obj.isGroup){
     return {
-      id:m.userData.id, name:m.name,
-      prim: m.userData.prim || null,
-      geoType: m.geometry.type,
-      positions: Array.from(m.geometry.attributes.position.array),
-      normals: m.geometry.attributes.normal? Array.from(m.geometry.attributes.normal.array): null,
-      indices: m.geometry.index? Array.from(m.geometry.index.array): null,
-      color: m.material.color.getHex(),
-      roughness: m.material.roughness, metalness: m.material.metalness,
-      position:[pos.x,pos.y,pos.z],
-      rotation:[eul.x,eul.y,eul.z],
-      scale:[scl.x,scl.y,scl.z],
-      visible:m.visible
+      type:'group', id:obj.userData.id, name:obj.name,
+      position:[obj.position.x,obj.position.y,obj.position.z],
+      rotation:[obj.rotation.x,obj.rotation.y,obj.rotation.z],
+      scale:[obj.scale.x,obj.scale.y,obj.scale.z],
+      visible:obj.visible,
+      children: obj.children.map(serializeNode)
     };
-  });
+  }
+  return {
+    type:'mesh', id:obj.userData.id, name:obj.name,
+    prim: obj.userData.prim || null,
+    positions: Array.from(obj.geometry.attributes.position.array),
+    normals: obj.geometry.attributes.normal ? Array.from(obj.geometry.attributes.normal.array) : null,
+    indices: obj.geometry.index ? Array.from(obj.geometry.index.array) : null,
+    color: obj.material.color.getHex(),
+    roughness: obj.material.roughness, metalness: obj.material.metalness,
+    position:[obj.position.x,obj.position.y,obj.position.z],
+    rotation:[obj.rotation.x,obj.rotation.y,obj.rotation.z],
+    scale:[obj.scale.x,obj.scale.y,obj.scale.z],
+    visible:obj.visible
+  };
+}
+function serializeScene(){
+  return objectsGroup.children.map(serializeNode);
+}
+function buildNode(o){
+  // Back-compat: projects saved by the old flat exporter have no `type` field
+  // and always describe a single mesh with a world-baked transform — that
+  // still loads correctly here since meshes with no parent group use the
+  // same local-transform fields either way.
+  if(o.type==='group'){
+    const g=new THREE.Group();
+    g.name=o.name; g.userData.id=o.id;
+    g.position.set(...o.position); g.rotation.set(...o.rotation); g.scale.set(...o.scale);
+    g.visible=o.visible;
+    (o.children||[]).forEach(c=>g.add(buildNode(c)));
+    return g;
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(o.positions,3));
+  if(o.normals) geo.setAttribute('normal', new THREE.Float32BufferAttribute(o.normals,3));
+  else geo.computeVertexNormals();
+  if(o.indices) geo.setIndex(o.indices);
+  geo.computeBoundingSphere();
+  const mat=new THREE.MeshStandardMaterial({color:o.color, roughness:o.roughness, metalness:o.metalness});
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.name=o.name; mesh.userData.id=o.id; mesh.userData.prim=o.prim;
+  mesh.position.set(...o.position); mesh.rotation.set(...o.rotation); mesh.scale.set(...o.scale);
+  mesh.visible=o.visible;
+  if(clipEnabled){ mesh.material.clippingPlanes=[clipPlane]; mesh.material.side=THREE.DoubleSide; }
+  return mesh;
 }
 function loadScene(data){
+  clearBoolPreview();
+  clearMeasureHelpers(); measurePts=[];
+  clearThicknessMarkers();
   objectsGroup.clear();
-  data.forEach(o=>{
-    const geo=new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(o.positions,3));
-    if(o.normals) geo.setAttribute('normal', new THREE.Float32BufferAttribute(o.normals,3));
-    else geo.computeVertexNormals();
-    if(o.indices) geo.setIndex(o.indices);
-    geo.computeBoundingSphere();
-    const mat=new THREE.MeshStandardMaterial({color:o.color, roughness:o.roughness, metalness:o.metalness});
-    const mesh=new THREE.Mesh(geo,mat);
-    mesh.name=o.name; mesh.userData.id=o.id; mesh.userData.prim=o.prim;
-    mesh.position.set(...o.position); mesh.rotation.set(...o.rotation); mesh.scale.set(...o.scale);
-    mesh.visible=o.visible;
-    objectsGroup.add(mesh);
-  });
+  data.forEach(o=>objectsGroup.add(buildNode(o)));
   selected=null; xformActive=false;
+  boolPrimary=null; boolSecondary=null; boolPicking=null;
+  alignRef=null; alignMove=null; alignPicking=null;
+  updateNudgePad();
   refreshLayers(); refreshTransformPanel();
 }
 
@@ -1618,7 +1691,7 @@ async function refreshLoadList(){
     row.innerHTML=`<div class="nm">${p.name}</div><button data-act="del">🗑</button>`;
     row.addEventListener('click',(e)=>{
       if(e.target.closest('button')) return;
-      loadScene(p.scene); closeAllPanels(); toast('Loaded "'+p.name+'"');
+      loadScene(p.scene); pushHistory('load "'+p.name+'"'); closeAllPanels(); toast('Loaded "'+p.name+'"');
     });
     row.querySelector('[data-act="del"]').addEventListener('click',()=>deleteProject(p.id));
     list.appendChild(row);
@@ -1628,14 +1701,15 @@ async function refreshLoadList(){
 document.getElementById('fSave').addEventListener('click',()=>{ saveProject(); });
 document.getElementById('fNew').addEventListener('click',()=>{
   if(objectsGroup.children.length && !confirm('Start a new project? Unsaved changes will be lost.')) return;
-  objectsGroup.clear(); selected=null; xformActive=false; refreshLayers(); refreshTransformPanel();
-  document.getElementById('nudgePad').classList.remove('show');
+  loadScene([]);
+  pushHistory('new project');
   closeAllPanels(); toast('New project');
 });
 document.getElementById('fLoadOpen').addEventListener('click',()=>{
   closeAllPanels();
   refreshLoadList();
   document.getElementById('panelLoad').classList.add('open');
+  updateNudgePad();
 });
 
 /* ---------- history: undo/redo stack + jumpable list ---------- */
@@ -1861,6 +1935,7 @@ document.getElementById('ungroupBtn').addEventListener('click',()=>{
   kids.forEach(k=>objectsGroup.attach(k));
   objectsGroup.remove(selected);
   selected=null; xformActive=false;
+  updateNudgePad();
   pushHistory('ungroup');
   refreshTransformPanel(); refreshLayers(); refreshGroupList();
   toast('Ungrouped');
@@ -1959,8 +2034,6 @@ document.getElementById('analyzeBtn').addEventListener('click',()=>{
 
 /* ---------- cross-section / clipping plane ---------- */
 renderer.localClippingEnabled=true;
-let clipEnabled=false, clipAxis='z', clipFlip=false;
-const clipPlane=new THREE.Plane(new THREE.Vector3(0,0,1),0);
 function updateClipPlane(){
   const n=new THREE.Vector3(clipAxis==='x'?1:0, clipAxis==='y'?1:0, clipAxis==='z'?1:0);
   if(clipFlip) n.negate();
@@ -1993,9 +2066,8 @@ document.getElementById('sectionFlip').addEventListener('click',()=>{
   clipFlip=!clipFlip; updateClipPlane();
   toast('Cut side flipped');
 });
-// keep newly-added meshes in sync with the current clip state
-const _origAddPrimitive=addPrimitive;
-addPrimitive=function(prim){ _origAddPrimitive(prim); if(clipEnabled) applyClipToMaterials(); };
+// clip state for newly-created meshes is now kept in sync every frame (see animate loop) —
+// covers duplicate/array/boolean/import paths too, not just addPrimitive
 
 /* ---------- GitHub cloud sync ---------- */
 function ghSettings(){

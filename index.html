@@ -181,6 +181,7 @@
 
     <div id="midrow">
       <div id="sidebar-l">
+        <button class="tool" id="btnUndoSide"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-2"/></svg>Undo</button>
         <button class="tool" data-panel="panelAdd"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add</button>
         <button class="tool" data-panel="panelTransform"><svg viewBox="0 0 24 24"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>Move</button>
         <button class="tool" data-panel="panelBool"><svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg>Bool</button>
@@ -210,6 +211,7 @@
 
     <div id="bottombar">
       <div class="row">
+        <button class="tool" id="btnUndoP"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-2"/></svg>Undo</button>
         <button class="tool" data-panel="panelAdd"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add</button>
         <button class="tool" data-panel="panelTransform"><svg viewBox="0 0 24 24"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>Move</button>
         <button class="tool" data-panel="panelBool"><svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg>Bool</button>
@@ -285,10 +287,7 @@
         <button class="pbtn" data-bool="subtract"><svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="7"/><circle cx="15" cy="12" r="7" fill="var(--panel)" stroke="var(--panel)"/><circle cx="15" cy="12" r="7"/></svg>Subtract</button>
         <button class="pbtn" data-bool="intersect"><svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="7"/><circle cx="15" cy="12" r="7"/></svg>Intersect</button>
       </div>
-      <div class="row2" id="boolPreviewBar" style="display:none;margin-bottom:12px;">
-        <button class="fullbtn primary" id="boolApply" style="margin:0;">✓ Apply</button>
-        <button class="fullbtn danger" id="boolCancel" style="margin:0;">✕ Cancel</button>
-      </div>
+      <div class="empty" style="text-align:left;padding:0 0 8px;font-size:11px;">Applies immediately — tap Undo (top of screen) if the result isn't what you expected.</div>
       <div class="divider"></div>
       <div id="boolObjList"></div>
     </div>
@@ -524,9 +523,10 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 viewportEl.appendChild(renderer.domElement);
 
-const hemi=new THREE.HemisphereLight(0xbfd4ff, 0x1a1512, 0.9); hemi.position.set(0,0,1); scene.add(hemi);
+const hemi=new THREE.HemisphereLight(0xbfd4ff, 0x2a2420, 0.9); hemi.position.set(0,0,1); scene.add(hemi);
 const key=new THREE.DirectionalLight(0xffffff,0.9); key.position.set(6,6,10); scene.add(key);
 const fill=new THREE.DirectionalLight(0x88aaff,0.35); fill.position.set(-6,-6,4); scene.add(fill);
+const under=new THREE.DirectionalLight(0xaab8ff,0.45); under.position.set(-4,4,-10); scene.add(under);
 
 let grid=new THREE.GridHelper(120,24,0x3a4150,0x232833); grid.rotation.x=Math.PI/2; scene.add(grid);
 const axes=new THREE.AxesHelper(3); axes.material.transparent=true; axes.material.opacity=0.5; scene.add(axes);
@@ -1352,7 +1352,6 @@ function refreshLayers(){
 /* ---------- boolean ops: sequential pick, canvas stays live, plus inline list ---------- */
 let boolPicking=null; // 'primary' | 'secondary' | null
 function armBoolPick(slot){
-  if(previewMesh){ clearBoolPreview(); toast('Previous preview discarded'); }
   boolPicking=slot;
   document.getElementById('pickPrimary').classList.toggle('active', slot==='primary');
   document.getElementById('pickSecondary').classList.toggle('active', slot==='secondary');
@@ -1380,15 +1379,6 @@ function refreshBoolList(){
   });
 }
 
-let previewMesh=null, previewOp=null;
-function clearBoolPreview(){
-  if(previewMesh){ scene.remove(previewMesh); previewMesh.geometry.dispose(); previewMesh.material.dispose(); previewMesh=null; }
-  if(boolPrimary) boolPrimary.visible=true;
-  if(boolSecondary) boolSecondary.visible=true;
-  previewOp=null;
-  document.getElementById('boolPreviewBar').style.display='none';
-  document.getElementById('boolOpGrid').style.opacity='1';
-}
 function resetBoolPickers(){
   boolPrimary=null; boolSecondary=null;
   document.getElementById('pickPrimary').textContent='① Primary: —';
@@ -1401,43 +1391,30 @@ document.querySelectorAll('[data-bool]').forEach(btn=>{
     const op=btn.getAttribute('data-bool');
     if(!boolPrimary||!boolSecondary){toast('Pick ① Primary and ② Secondary first');return;}
     if(boolPrimary===boolSecondary){toast('Pick two different objects');return;}
+    const primary=boolPrimary, secondary=boolSecondary; // snapshot — never rely on the live globals after this point
     try{
-      clearBoolPreview();
-      const resultGeo=CSG.perform(op, boolPrimary, boolSecondary);
-      const mat=new THREE.MeshStandardMaterial({color:0xff7a3d, roughness:0.4, metalness:0.1, transparent:true, opacity:0.5, depthWrite:false});
-      previewMesh=new THREE.Mesh(resultGeo,mat);
-      scene.add(previewMesh);
-      previewOp=op;
-      boolPrimary.visible=false; boolSecondary.visible=false;
-      document.getElementById('boolPreviewBar').style.display='flex';
-      document.getElementById('boolOpGrid').style.opacity='.45';
-      toast(op+' preview — Apply to confirm');
+      const resultGeo=CSG.perform(op, primary, secondary);
+      if(!resultGeo.attributes.position || resultGeo.attributes.position.count===0){
+        toast('Result was empty — these shapes may not actually overlap');
+        return;
+      }
+      const mat=primary.material.clone();
+      mat.transparent=false; mat.opacity=1;
+      const mesh=new THREE.Mesh(resultGeo,mat);
+      mesh.name=op.charAt(0).toUpperCase()+op.slice(1)+' '+(idCounter++);
+      mesh.userData.id='obj_'+Date.now()+'_'+Math.floor(Math.random()*1000);
+      objectsGroup.remove(primary); objectsGroup.remove(secondary);
+      objectsGroup.add(mesh);
+      pushHistory('boolean '+op);
+      resetBoolPickers();
+      selectObject(mesh); refreshLayers();
+      toast(op+' applied — tap Undo (top of screen) if that\'s not what you wanted');
+      closeAllPanels();
     }catch(err){
       console.error(err);
-      toast('Boolean failed — try simpler shapes');
+      toast('Boolean failed — try simpler shapes, or Undo and retry');
     }
   });
-});
-document.getElementById('boolApply').addEventListener('click',()=>{
-  if(!previewMesh||!previewOp) return;
-  const mat=boolPrimary.material.clone(); mat.transparent=false; mat.opacity=1; mat.depthWrite=true;
-  const mesh=new THREE.Mesh(previewMesh.geometry, mat);
-  mesh.name=previewOp.charAt(0).toUpperCase()+previewOp.slice(1)+' '+(idCounter++);
-  mesh.userData.id='obj_'+Date.now();
-  pushHistory('boolean');
-  objectsGroup.remove(boolPrimary); objectsGroup.remove(boolSecondary);
-  objectsGroup.add(mesh);
-  scene.remove(previewMesh); previewMesh.material.dispose(); previewMesh=null; previewOp=null;
-  document.getElementById('boolPreviewBar').style.display='none';
-  document.getElementById('boolOpGrid').style.opacity='1';
-  resetBoolPickers();
-  selectObject(mesh); refreshLayers();
-  toast('Applied');
-  closeAllPanels();
-});
-document.getElementById('boolCancel').addEventListener('click',()=>{
-  clearBoolPreview();
-  toast('Cancelled');
 });
 
 
@@ -1930,7 +1907,6 @@ function buildNode(o){
   return mesh;
 }
 function loadScene(data){
-  clearBoolPreview();
   clearMeasureHelpers(); measurePts=[];
   clearThicknessMarkers();
   objectsGroup.clear();
@@ -2014,16 +1990,20 @@ function goHistory(idx){
   historyLoading=false;
   refreshHistoryList();
 }
-document.getElementById('btnUndo').addEventListener('click',()=>{
+function doUndo(){
   if(historyIndex<=0){toast('Nothing to undo');return;}
   goHistory(historyIndex-1);
   toast('Undone');
-});
-document.getElementById('btnRedo').addEventListener('click',()=>{
+}
+function doRedo(){
   if(historyIndex>=historyStack.length-1){toast('Nothing to redo');return;}
   goHistory(historyIndex+1);
   toast('Redone');
-});
+}
+document.getElementById('btnUndo').addEventListener('click',doUndo);
+document.getElementById('btnUndoP').addEventListener('click',doUndo);
+document.getElementById('btnUndoSide').addEventListener('click',doUndo);
+document.getElementById('btnRedo').addEventListener('click',doRedo);
 function refreshHistoryList(){
   const list=document.getElementById('historyList');
   if(!list) return;

@@ -1,5 +1,5 @@
-const CACHE = 'forge3d-v1';
-const SHELL = ['./index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+const CACHE = 'forge3d-v2';
+const SHELL = ['./index.html', './manifest.json', './icon-192.png', './icon-512.png', './three.min.js', './jszip.min.js'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
@@ -18,7 +18,7 @@ self.addEventListener('fetch', (e) => {
     caches.match(e.request).then((cached) => {
       if (cached) return cached;
       return fetch(e.request).then((res) => {
-        // opportunistically cache new same-origin GETs (e.g. the CDN'd three.js) for offline use
+        // opportunistically cache any other same-origin GETs for offline use
         if (e.request.method === 'GET' && res.status === 200) {
           const clone = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, clone)).catch(()=>{});
